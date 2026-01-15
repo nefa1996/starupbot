@@ -861,6 +861,8 @@ async def process_add_admin(msg: Message, state: FSMContext):
     await msg.answer(f"✅ Пользователь {target_id} теперь администратор!")
     await state.clear()
 
+from aiohttp import web
+
 @dp.startup()
 async def on_startup(bot: Bot):
     await bot.set_my_commands([
@@ -869,9 +871,35 @@ async def on_startup(bot: Bot):
     ])
     print("Bot commands installed")
 
+
+# -----------------------------
+# Веб-сервер для Koyeb health-check
+async def handle(request):
+    return web.Response(text="OK")
+
+async def start_web():
+    app = web.Application()
+    app.router.add_get("/", handle)
+    runner = web.AppRunner(app)
+    await runner.setup()
+
+    site = web.TCPSite(runner, "0.0.0.0", 8000)
+    await site.start()
+    print("Health-check server started on port 8000")
+
+
+# -----------------------------
+# Правильный main для Koyeb
 async def main():
+    # Запускаем веб-сервер в отдельном таске
+    asyncio.create_task(start_web())
+
+    # Небольшая задержка — иначе Telegram API даёт timeout
+    await asyncio.sleep(2)
+
     print("Starting polling...")
     await dp.start_polling(bot)
+
 
 if __name__ == "__main__":
     asyncio.run(main())
