@@ -69,9 +69,7 @@ async def main():
     from aiogram import executor
     executor.start_polling(dp)
 
-# ---------------------
-if __name__ == "__main__":
-    asyncio.run(main())
+
     
 @dp.callback_query(F.data == "admin_all_commands")
 async def admin_all_commands(cb: CallbackQuery):
