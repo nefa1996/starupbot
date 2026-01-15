@@ -861,13 +861,16 @@ async def process_add_admin(msg: Message, state: FSMContext):
     await msg.answer(f"✅ Пользователь {target_id} теперь администратор!")
     await state.clear()
 
-async def main():
-    await bot.delete_my_commands()
+@dp.startup()
+async def on_startup(bot: Bot):
     await bot.set_my_commands([
         BotCommand(command="start", description="Меню"),
         BotCommand(command="cabinet", description="Кабинет")
     ])
-    print("Commands set successfully")
+    print("Bot commands installed")
+
+async def main():
+    print("Starting polling...")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
