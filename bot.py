@@ -58,11 +58,6 @@ async def start_web():
     await site.start()
     print("Fake web server started on port 8000")
 
-# ---------------------
-# ТЕСТОВЫЙ ХЕНДЛЕР (удали если у тебя есть свой)
-@dp.message(Command("start"))
-async def cmd_start(message: Message):
-    await message.answer("Бот работает!")
 
 # ---------------------
 async def main():
