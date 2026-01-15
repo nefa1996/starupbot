@@ -10,10 +10,10 @@ from config import BOT_TOKEN, ADMIN_ID, LOG_CHANNELS
 from db import *
 from keyboards import *
 
-from aiohttp import web  # <- добавлено для фейкового веб-сервера
+from aiohttp import web  # Для фейкового веб-сервера
 
 bot = Bot(token=BOT_TOKEN)
-dp = Dispatcher()
+dp = Dispatcher(bot)
 
 # ---------------------
 # Классы состояний бота
@@ -60,15 +60,26 @@ async def start_web():
     print("Web server started on port 8000")
 
 # ---------------------
+# Асинхронный polling без executor.start_polling
+async def start_polling():
+    from aiogram import types
+
+    # Тестовый хэндлер /start
+    @dp.message(Command(commands=["start"]))
+    async def start_handler(message: types.Message):
+        await message.answer("Бот работает!")
+
+    # Запуск polling
+    await dp.start_polling()
+
+# ---------------------
 # Главная функция запуска
 async def main():
-    # Старт веб-сервера
+    # Запуск веб-сервера
     await start_web()
     
-    # Старт бота через polling
-    from aiogram import executor
-    executor.start_polling(dp)
-
+    # Запуск polling в отдельной таске
+    await start_polling()
 
     
 @dp.callback_query(F.data == "admin_all_commands")
