@@ -10,9 +10,13 @@ from config import BOT_TOKEN, ADMIN_ID, LOG_CHANNELS
 from db import *
 from keyboards import *
 
+from aiohttp import web  # <- добавлено для фейкового веб-сервера
+
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
+# ---------------------
+# Классы состояний бота
 class OrderAd(StatesGroup):
     channel = State()
     count = State()
@@ -26,8 +30,11 @@ class AdminAdd(StatesGroup):
 class CreateCheck(StatesGroup):
     total_stars = State()
 
+# ---------------------
+# Вспомогательные функции
 def is_admin(user_id):
-    if user_id == ADMIN_ID: return True
+    if user_id == ADMIN_ID: 
+        return True
     cursor.execute("SELECT 1 FROM admins WHERE user_id=?", (user_id,))
     return cursor.fetchone() is not None
 
@@ -38,6 +45,34 @@ async def notify_admin(text, kb=None):
         except Exception as e:
             print(f"Error sending to {chat_id}: {e}")
 
+# ---------------------
+# Фейковый веб-сервер для Koyeb health check
+async def handle(request):
+    return web.Response(text="OK")
+
+async def start_web():
+    app = web.Application()
+    app.router.add_get("/", handle)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "0.0.0.0", 8000)  # Koyeb проверяет именно этот порт
+    await site.start()
+    print("Web server started on port 8000")
+
+# ---------------------
+# Главная функция запуска
+async def main():
+    # Старт веб-сервера
+    await start_web()
+    
+    # Старт бота через polling
+    from aiogram import executor
+    executor.start_polling(dp)
+
+# ---------------------
+if __name__ == "__main__":
+    asyncio.run(main())
+    
 @dp.callback_query(F.data == "admin_all_commands")
 async def admin_all_commands(cb: CallbackQuery):
     if not is_admin(cb.from_user.id): return
