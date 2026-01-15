@@ -10,13 +10,13 @@ from config import BOT_TOKEN, ADMIN_ID, LOG_CHANNELS
 from db import *
 from keyboards import *
 
-from aiohttp import web  # Для фейкового веб-сервера
+from aiohttp import web
 
 bot = Bot(token=BOT_TOKEN)
-dp = Dispatcher(bot)
+dp = Dispatcher()  # <-- aiogram 3.x правильно!
 
 # ---------------------
-# Классы состояний бота
+# Классы состояний
 class OrderAd(StatesGroup):
     channel = State()
     count = State()
@@ -31,9 +31,8 @@ class CreateCheck(StatesGroup):
     total_stars = State()
 
 # ---------------------
-# Вспомогательные функции
 def is_admin(user_id):
-    if user_id == ADMIN_ID: 
+    if user_id == ADMIN_ID:
         return True
     cursor.execute("SELECT 1 FROM admins WHERE user_id=?", (user_id,))
     return cursor.fetchone() is not None
@@ -46,7 +45,7 @@ async def notify_admin(text, kb=None):
             print(f"Error sending to {chat_id}: {e}")
 
 # ---------------------
-# Фейковый веб-сервер для Koyeb health check
+# Фейковый веб-сервер для Koyeb
 async def handle(request):
     return web.Response(text="OK")
 
@@ -55,31 +54,23 @@ async def start_web():
     app.router.add_get("/", handle)
     runner = web.AppRunner(app)
     await runner.setup()
-    site = web.TCPSite(runner, "0.0.0.0", 8000)  # Koyeb проверяет именно этот порт
+    site = web.TCPSite(runner, "0.0.0.0", 8000)
     await site.start()
-    print("Web server started on port 8000")
+    print("Fake web server started on port 8000")
 
 # ---------------------
-# Асинхронный polling без executor.start_polling
-async def start_polling():
-    from aiogram import types
-
-    # Тестовый хэндлер /start
-    @dp.message(Command(commands=["start"]))
-    async def start_handler(message: types.Message):
-        await message.answer("Бот работает!")
-
-    # Запуск polling
-    await dp.start_polling()
+# ТЕСТОВЫЙ ХЕНДЛЕР (удали если у тебя есть свой)
+@dp.message(Command("start"))
+async def cmd_start(message: Message):
+    await message.answer("Бот работает!")
 
 # ---------------------
-# Главная функция запуска
 async def main():
-    # Запуск веб-сервера
+    # Запускаем веб-сервер
     await start_web()
-    
-    # Запуск polling в отдельной таске
-    await start_polling()
+
+    # Запускаем aiogram polling
+    await dp.start_polling(bot)
 
     
 @dp.callback_query(F.data == "admin_all_commands")
