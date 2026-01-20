@@ -77,6 +77,7 @@ async def admin_all_commands(cb: CallbackQuery):
         "<code>/id</code> — Узнать ID текущего чата\n"
         "<code>/addstars</code> — Тестовое начисление 1000 ⭐ (только супер-админ)\n"
         "<code>/create_check</code> — Создать чек на звезды\n"
+        "<code>/news</code> - Создание постов в группу (только супер-админ)\n"
     )
     await cb.message.answer(text, parse_mode="HTML")
     await cb.answer()
