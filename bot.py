@@ -98,7 +98,6 @@ async def admin_send_news_cb(cb: CallbackQuery, state: FSMContext):
     await state.set_state(SendNews.text)
     await cb.answer()
     
-    )
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📝 Отправить новость", callback_data="admin_send_news")],
     ])
