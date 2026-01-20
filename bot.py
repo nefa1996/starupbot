@@ -81,39 +81,53 @@ async def admin_all_commands(cb: CallbackQuery):
     await cb.message.answer(text, parse_mode="HTML")
     await cb.answer()
 
-
 # ---------------------
-# Настройки для новостей
-SUPER_ADMINS = [ADMIN_ID]  # сюда можно добавить еще ID супер-админов
-DRAFT_CHANNEL = -1001234567890  # ID канала черновиков (https://t.me/+j3H-16lGAolkMGZk)
-TARGET_CHANNEL = "@starupbotnews"  # целевая группа для публикации
-
-# ---------------------
-# FSM для новостей
+# FSM для публикации новостей
 class NewsPost(StatesGroup):
     text = State()
     photo = State()
     buttons = State()
+    schedule_hour = State()
+    schedule_minute = State()
 
 # ---------------------
-# Отслеживаем сообщения в канале черновиков
-@dp.message(F.chat.id == DRAFT_CHANNEL)
-async def draft_post(msg: Message, state: FSMContext):
-    if msg.from_user.id not in SUPER_ADMINS:
-        return  # только супер-админ может публиковать
+# Команда /news
+@dp.message(Command("news"))
+async def news_cmd(msg: Message, state: FSMContext):
+    if msg.from_user.id != ADMIN_ID:
+        return await msg.answer("❌ У вас нет доступа.")
+    await msg.answer("Введите текст поста:")
+    await state.set_state(NewsPost.text)
 
-    await state.update_data(text=msg.text or "")
-    photo = msg.photo[-1].file_id if msg.photo else None
-    if photo:
-        await state.update_data(photo=photo)
-    
+# ---------------------
+# Получение текста
+@dp.message(NewsPost.text)
+async def process_text(msg: Message, state: FSMContext):
+    await state.update_data(text=msg.text)
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="✅ Опубликовать сейчас", callback_data="publish_now")],
-        [InlineKeyboardButton(text="⏰ Опубликовать по времени", callback_data="publish_later")],
-        [InlineKeyboardButton(text="🔗 Добавить кнопки с ссылками", callback_data="add_buttons")]
+        [InlineKeyboardButton("📸 Добавить фото", callback_data="add_photo")],
+        [InlineKeyboardButton("🔗 Добавить кнопки", callback_data="add_buttons")],
+        [InlineKeyboardButton("✅ Опубликовать сейчас", callback_data="publish_now")],
+        [InlineKeyboardButton("⏰ Опубликовать позже", callback_data="publish_later")],
     ])
-    await msg.reply("Выберите действие для публикации:", reply_markup=kb)
+    await msg.answer("Текст сохранён. Выберите действие:", reply_markup=kb)
     await state.set_state(NewsPost.photo)
+
+# ---------------------
+# Добавление фото
+@dp.callback_query(F.data == "add_photo")
+async def add_photo_cb(cb: CallbackQuery, state: FSMContext):
+    await cb.message.answer("Отправьте фото для поста.")
+    await cb.answer()
+
+@dp.message(F.photo, NewsPost.photo)
+async def receive_photo(msg: Message, state: FSMContext):
+    await state.update_data(photo=msg.photo[-1].file_id)
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton("✅ Опубликовать сейчас", callback_data="publish_now")],
+        [InlineKeyboardButton("⏰ Опубликовать позже", callback_data="publish_later")]
+    ])
+    await msg.answer("Фото сохранено! Выберите действие:", reply_markup=kb)
 
 # ---------------------
 # Добавление кнопок с ссылками
@@ -134,15 +148,14 @@ async def receive_buttons(msg: Message, state: FSMContext):
             name, url = line.split("|", 1)
             buttons_data.append((name.strip(), url.strip()))
     await state.update_data(buttons=buttons_data)
-
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="✅ Опубликовать сейчас", callback_data="publish_now")],
-        [InlineKeyboardButton(text="⏰ Опубликовать по времени", callback_data="publish_later")]
+        [InlineKeyboardButton("✅ Опубликовать сейчас", callback_data="publish_now")],
+        [InlineKeyboardButton("⏰ Опубликовать позже", callback_data="publish_later")]
     ])
-    await msg.answer("Кнопки добавлены.", reply_markup=kb)
+    await msg.answer("Кнопки добавлены. Выберите действие:", reply_markup=kb)
 
 # ---------------------
-# Опубликовать сейчас
+# Публикация сейчас
 @dp.callback_query(F.data == "publish_now")
 async def publish_now_cb(cb: CallbackQuery, state: FSMContext):
     data = await state.get_data()
@@ -154,54 +167,71 @@ async def publish_now_cb(cb: CallbackQuery, state: FSMContext):
     if buttons_data:
         kb = InlineKeyboardMarkup(row_width=1)
         for name, url in buttons_data:
-            kb.add(InlineKeyboardButton(text=name, url=url))
+            kb.add(InlineKeyboardButton(name, url=url))
 
     try:
         if photo:
             await bot.send_photo(TARGET_CHANNEL, photo=photo, caption=text, reply_markup=kb)
         else:
             await bot.send_message(TARGET_CHANNEL, text, reply_markup=kb)
-        await cb.message.answer("✅ Пост опубликован в @starupbotnews!")
+        await cb.message.answer("✅ Пост опубликован!")
     except Exception as e:
         await cb.message.answer(f"❌ Ошибка при публикации: {e}")
     await state.clear()
     await cb.answer()
 
 # ---------------------
-# Опубликовать по времени через инлайн-кнопки
+# Публикация позже — выбор времени
 @dp.callback_query(F.data == "publish_later")
 async def publish_later_cb(cb: CallbackQuery, state: FSMContext):
-    kb = InlineKeyboardMarkup(row_width=3)
-    kb.add(
-        InlineKeyboardButton("через 1 мин", callback_data="schedule_1"),
-        InlineKeyboardButton("через 5 мин", callback_data="schedule_5"),
-        InlineKeyboardButton("через 10 мин", callback_data="schedule_10"),
-        InlineKeyboardButton("через 30 мин", callback_data="schedule_30"),
-        InlineKeyboardButton("через 1 час", callback_data="schedule_60")
-    )
-    await cb.message.answer("Выберите через сколько опубликовать пост:", reply_markup=kb)
+    # Кнопки часов 0-23
+    kb = InlineKeyboardMarkup(row_width=6)
+    for h in range(24):
+        kb.add(InlineKeyboardButton(f"{h:02}", callback_data=f"hour_{h}"))
+    await cb.message.answer("Выберите час публикации (0-23):", reply_markup=kb)
     await cb.answer()
 
 # ---------------------
-# Обработка отложенной публикации
-@dp.callback_query(F.data.startswith("schedule_"))
-async def schedule_post_cb(cb: CallbackQuery, state: FSMContext):
-    minutes = int(cb.data.split("_")[1])
+# Выбор часа
+@dp.callback_query(F.data.startswith("hour_"))
+async def choose_hour_cb(cb: CallbackQuery, state: FSMContext):
+    hour = int(cb.data.split("_")[1])
+    await state.update_data(schedule_hour=hour)
+    # Кнопки минут каждые 5 минут
+    kb = InlineKeyboardMarkup(row_width=6)
+    for m in range(0, 60, 5):
+        kb.add(InlineKeyboardButton(f"{m:02}", callback_data=f"minute_{m}"))
+    await cb.message.answer("Выберите минуты:", reply_markup=kb)
+    await cb.answer()
+
+# ---------------------
+# Выбор минут и планирование
+@dp.callback_query(F.data.startswith("minute_"))
+async def choose_minute_cb(cb: CallbackQuery, state: FSMContext):
+    minute = int(cb.data.split("_")[1])
     data = await state.get_data()
+    hour = data.get("schedule_hour")
     text = data.get("text")
     photo = data.get("photo")
     buttons_data = data.get("buttons", [])
+
+    # Рассчитываем задержку до выбранного времени
+    now = datetime.now()
+    post_time = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    if post_time < now:
+        post_time += timedelta(days=1)
+    delay = (post_time - now).total_seconds()
 
     kb = None
     if buttons_data:
         kb = InlineKeyboardMarkup(row_width=1)
         for name, url in buttons_data:
-            kb.add(InlineKeyboardButton(text=name, url=url))
+            kb.add(InlineKeyboardButton(name, url=url))
 
-    await cb.message.answer(f"⏰ Пост будет опубликован через {minutes} минут.")
+    await cb.message.answer(f"⏰ Пост запланирован на {post_time.strftime('%H:%M')}.")
 
     async def send_later():
-        await asyncio.sleep(minutes * 60)
+        await asyncio.sleep(delay)
         try:
             if photo:
                 await bot.send_photo(TARGET_CHANNEL, photo=photo, caption=text, reply_markup=kb)
@@ -213,7 +243,8 @@ async def schedule_post_cb(cb: CallbackQuery, state: FSMContext):
     asyncio.create_task(send_later())
     await state.clear()
     await cb.answer()
-    
+
+    #Чек
 @dp.message(Command("create_check"))
 async def create_check_cmd(msg: Message, state: FSMContext):
     if not is_admin(msg.from_user.id): return
