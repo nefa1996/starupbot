@@ -77,10 +77,113 @@ async def admin_all_commands(cb: CallbackQuery):
         "<code>/id</code> — Узнать ID текущего чата\n"
         "<code>/addstars</code> — Тестовое начисление 1000 ⭐ (только супер-админ)\n"
         "<code>/create_check</code> — Создать чек на звезды\n"
-        "<code>/send_news</code> - Создать пост в группу\n"
+        "<code>/news</code> - Создать пост в группу (только супер-админ)\n"
     )
     await cb.message.answer(text, parse_mode="HTML")
     await cb.answer()
+    
+    # ---------------------
+# Настройки супер-админа и группы
+SUPER_ADMINS = [ADMIN_ID]  # сюда можно добавить ещё ID супер-админов
+GROUP = "@starupbotnews"   # или числовой ID -1001234567890
+
+# ---------------------
+# FSM для новостей
+class NewsPost(StatesGroup):
+    text = State()
+    scheduled_time = State()
+
+# ---------------------
+# Команда /news для супер-админа
+@dp.message(Command("news"))
+async def news_cmd(msg: Message, state: FSMContext):
+    if msg.from_user.id not in SUPER_ADMINS:
+        return await msg.answer("❌ У вас нет доступа к этой команде.")
+
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📝 Создать пост сейчас", callback_data="news_now")],
+        [InlineKeyboardButton(text="⏰ Создать пост на время", callback_data="news_schedule")]
+    ])
+    await msg.answer("Выберите действие:", reply_markup=kb)
+
+# ---------------------
+# Кнопка "Создать пост сейчас"
+@dp.callback_query(F.data == "news_now")
+async def news_now_cb(cb: CallbackQuery, state: FSMContext):
+    if cb.from_user.id not in SUPER_ADMINS:
+        return await cb.answer("❌ Нет доступа", show_alert=True)
+    
+    await cb.message.answer("Введите текст поста для публикации прямо сейчас:")
+    await state.set_state(NewsPost.text)
+    await state.update_data(schedule=False)
+    await cb.answer()
+
+# ---------------------
+# Кнопка "Создать пост на время"
+@dp.callback_query(F.data == "news_schedule")
+async def news_schedule_cb(cb: CallbackQuery, state: FSMContext):
+    if cb.from_user.id not in SUPER_ADMINS:
+        return await cb.answer("❌ Нет доступа", show_alert=True)
+    
+    await cb.message.answer("Введите текст поста для отложенной публикации:")
+    await state.set_state(NewsPost.text)
+    await state.update_data(schedule=True)
+    await cb.answer()
+
+# ---------------------
+# Получение текста поста
+@dp.message(NewsPost.text)
+async def process_news_text(msg: Message, state: FSMContext):
+    data = await state.get_data()
+    text = msg.text
+    is_scheduled = data.get("schedule", False)
+
+    if not text:
+        return await msg.answer("❌ Текст не может быть пустым!")
+
+    await state.update_data(text=text)
+
+    if is_scheduled:
+        await msg.answer(
+            "Введите дату и время публикации в формате:\n"
+            "ДД.ММ.ГГГГ ЧЧ:ММ\n\n"
+            "Пример: 25.01.2026 14:30"
+        )
+        await state.set_state(NewsPost.scheduled_time)
+    else:
+        await bot.send_message(GROUP, text)
+        await msg.answer("✅ Пост успешно отправлен в группу!")
+        await state.clear()
+
+# ---------------------
+# Получение времени для отложенной публикации
+@dp.message(NewsPost.scheduled_time)
+async def process_scheduled_time(msg: Message, state: FSMContext):
+    time_str = msg.text.strip()
+    try:
+        publish_time = datetime.strptime(time_str, "%d.%m.%Y %H:%M")
+        now = datetime.now()
+        if publish_time <= now:
+            return await msg.answer("❌ Время должно быть в будущем!")
+    except ValueError:
+        return await msg.answer("❌ Неверный формат! Используйте ДД.ММ.ГГГГ ЧЧ:ММ")
+
+    data = await state.get_data()
+    text = data.get("text")
+
+    await msg.answer(f"⏰ Пост будет опубликован {publish_time.strftime('%d.%m.%Y %H:%M')}")
+
+    delay = (publish_time - datetime.now()).total_seconds()
+
+    async def send_later():
+        await asyncio.sleep(delay)
+        try:
+            await bot.send_message(GROUP, text)
+        except Exception as e:
+            await msg.answer(f"❌ Ошибка при публикации: {e}")
+
+    asyncio.create_task(send_later())
+    await state.clear()
 
 
 @dp.message(Command("create_check"))
