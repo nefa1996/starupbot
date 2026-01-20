@@ -88,11 +88,6 @@ async def admin_all_commands(cb: CallbackQuery):
 class SendNews(StatesGroup):
     text = State()
 
-# -----------------------------
-# Проверка администратора
-# -----------------------------
-def is_admin(user_id: int):
-    return user_id == ADMIN_ID
 
 # -----------------------------
 # Клавиатура админки
@@ -103,15 +98,6 @@ def admin_kb():
     ])
     return kb
 
-# -----------------------------
-# Команда для открытия админки
-# -----------------------------
-@dp.message(Command("admin"))
-async def admin_panel(msg: Message):
-    if not is_admin(msg.from_user.id):
-        await msg.answer("❌ У вас нет прав администратора.")
-        return
-    await msg.answer("⚙️ Админ-панель", reply_markup=admin_kb())
 
 # -----------------------------
 # Кнопка отправки новости
