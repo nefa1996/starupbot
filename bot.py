@@ -89,41 +89,57 @@ class SendNews(StatesGroup):
     text = State()
 
 # -----------------------------
-# Кнопка отправки новости
+# Кнопка вызова публикации новости
 # -----------------------------
 @dp.callback_query(F.data == "admin_send_news")
 async def admin_send_news_cb(cb: CallbackQuery, state: FSMContext):
-    if not is_admin(cb.from_user.id): return
+    if not is_admin(cb.from_user.id):
+        return
+
     await cb.message.answer("Введите текст для публикации в канале:")
     await state.set_state(SendNews.text)
     await cb.answer()
-    
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📝 Отправить новость", callback_data="admin_send_news")],
-    ])
 
 # -----------------------------
-# Обработка текста новости
+# Получение текста новости и вывод кнопки отправки
 # -----------------------------
 @dp.message(SendNews.text)
 async def process_send_news(msg: Message, state: FSMContext):
-    if not is_admin(msg.from_user.id): return
-    text = msg.text
-    try:
-        await bot.send_message(CHANNEL, text, parse_mode="HTML")
-        await msg.answer("✅ Сообщение успешно отправлено в канал!")
-    except Exception as e:
-        await msg.answer(f"❌ Не удалось отправить сообщение: {e}")
-    await state.clear()
+    if not is_admin(msg.from_user.id):
+        return
+    
+    # Сохраняем текст в FSM
+    await state.update_data(text=msg.text)
+
+    # Кнопка для подтверждения отправки
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📝 Отправить новость", callback_data="admin_send_news_confirm")]
+    ])
+
+    await msg.answer("Текст сохранён! Нажмите кнопку ниже, чтобы отправить новость.", reply_markup=kb)
 
 # -----------------------------
-# Простая команда для публикации через команду /send_news
+# Обработка кнопки подтверждения публикации
 # -----------------------------
-@dp.message(Command("send_news"))
-async def send_news_cmd(msg: Message, state: FSMContext):
-    if not is_admin(msg.from_user.id): return
-    await msg.answer("Введите текст для публикации в канале:")
-    await state.set_state(SendNews.text)
+@dp.callback_query(F.data == "admin_send_news_confirm")
+async def confirm_send_news(cb: CallbackQuery, state: FSMContext):
+    if not is_admin(cb.from_user.id):
+        return
+
+    data = await state.get_data()
+    text = data.get("text")
+    if not text:
+        await cb.answer("Сначала введите текст новости!")
+        return
+
+    try:
+        await bot.send_message(CHANNEL, text, parse_mode="HTML")
+        await cb.message.answer("✅ Сообщение успешно отправлено в канал!")
+    except Exception as e:
+        await cb.message.answer(f"❌ Не удалось отправить сообщение: {e}")
+
+    await state.clear()
+    await cb.answer()
 
 @dp.message(Command("create_check"))
 async def create_check_cmd(msg: Message, state: FSMContext):
