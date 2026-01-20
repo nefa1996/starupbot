@@ -88,17 +88,6 @@ async def admin_all_commands(cb: CallbackQuery):
 class SendNews(StatesGroup):
     text = State()
 
-
-# -----------------------------
-# Клавиатура админки
-# -----------------------------
-
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📝 Отправить новость", callback_data="admin_send_news")],
-    ])
-
-
-
 # -----------------------------
 # Кнопка отправки новости
 # -----------------------------
@@ -108,6 +97,11 @@ async def admin_send_news_cb(cb: CallbackQuery, state: FSMContext):
     await cb.message.answer("Введите текст для публикации в канале:")
     await state.set_state(SendNews.text)
     await cb.answer()
+    
+    )
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📝 Отправить новость", callback_data="admin_send_news")],
+    ])
 
 # -----------------------------
 # Обработка текста новости
