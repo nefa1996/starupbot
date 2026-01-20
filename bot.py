@@ -85,6 +85,11 @@ async def admin_all_commands(cb: CallbackQuery):
 
 
 # ---------------------
+# Настройки супер-админа и группы
+SUPER_ADMINS = [ADMIN_ID]  # сюда можно добавить ещё ID супер-админов
+GROUP = "@starupbotnews"   # или числовой ID -1001234567890
+
+# ---------------------
 # FSM для поста с фото
 class NewsPost(StatesGroup):
     text = State()
