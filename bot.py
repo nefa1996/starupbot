@@ -92,11 +92,11 @@ class SendNews(StatesGroup):
 # -----------------------------
 # Клавиатура админки
 # -----------------------------
-def admin_kb():
+
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📝 Отправить новость", callback_data="admin_send_news")],
     ])
-    return kb
+
 
 
 # -----------------------------
