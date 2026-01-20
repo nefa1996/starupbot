@@ -77,9 +77,74 @@ async def admin_all_commands(cb: CallbackQuery):
         "<code>/id</code> — Узнать ID текущего чата\n"
         "<code>/addstars</code> — Тестовое начисление 1000 ⭐ (только супер-админ)\n"
         "<code>/create_check</code> — Создать чек на звезды\n"
+        "<code>/send_news</code> - Создать пост в группу\n"
     )
     await cb.message.answer(text, parse_mode="HTML")
     await cb.answer()
+
+# -----------------------------
+# FSM для публикации новостей
+# -----------------------------
+class SendNews(StatesGroup):
+    text = State()
+
+# -----------------------------
+# Проверка администратора
+# -----------------------------
+def is_admin(user_id: int):
+    return user_id == ADMIN_ID
+
+# -----------------------------
+# Клавиатура админки
+# -----------------------------
+def admin_kb():
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📝 Отправить новость", callback_data="admin_send_news")],
+    ])
+    return kb
+
+# -----------------------------
+# Команда для открытия админки
+# -----------------------------
+@dp.message(Command("admin"))
+async def admin_panel(msg: Message):
+    if not is_admin(msg.from_user.id):
+        await msg.answer("❌ У вас нет прав администратора.")
+        return
+    await msg.answer("⚙️ Админ-панель", reply_markup=admin_kb())
+
+# -----------------------------
+# Кнопка отправки новости
+# -----------------------------
+@dp.callback_query(F.data == "admin_send_news")
+async def admin_send_news_cb(cb: CallbackQuery, state: FSMContext):
+    if not is_admin(cb.from_user.id): return
+    await cb.message.answer("Введите текст для публикации в канале:")
+    await state.set_state(SendNews.text)
+    await cb.answer()
+
+# -----------------------------
+# Обработка текста новости
+# -----------------------------
+@dp.message(SendNews.text)
+async def process_send_news(msg: Message, state: FSMContext):
+    if not is_admin(msg.from_user.id): return
+    text = msg.text
+    try:
+        await bot.send_message(CHANNEL, text, parse_mode="HTML")
+        await msg.answer("✅ Сообщение успешно отправлено в канал!")
+    except Exception as e:
+        await msg.answer(f"❌ Не удалось отправить сообщение: {e}")
+    await state.clear()
+
+# -----------------------------
+# Простая команда для публикации через команду /send_news
+# -----------------------------
+@dp.message(Command("send_news"))
+async def send_news_cmd(msg: Message, state: FSMContext):
+    if not is_admin(msg.from_user.id): return
+    await msg.answer("Введите текст для публикации в канале:")
+    await state.set_state(SendNews.text)
 
 @dp.message(Command("create_check"))
 async def create_check_cmd(msg: Message, state: FSMContext):
