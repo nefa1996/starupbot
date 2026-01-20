@@ -5,6 +5,10 @@ from aiogram.filters import CommandStart, Command
 from aiogram.types import Message, CallbackQuery, LabeledPrice, PreCheckoutQuery, BotCommand
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.filters import Command, StateFilter
+from datetime import datetime, timedelta
+
 
 from config import BOT_TOKEN, ADMIN_ID, LOG_CHANNELS
 from db import *
@@ -82,8 +86,10 @@ async def admin_all_commands(cb: CallbackQuery):
     await cb.message.answer(text, parse_mode="HTML")
     await cb.answer()
 
+TARGET_CHANNEL = "@starupbotnews"  # канал публикации
+
 # ---------------------
-# FSM для публикации новостей
+# FSM для новости
 class NewsPost(StatesGroup):
     text = State()
     photo = State()
@@ -102,9 +108,10 @@ async def news_cmd(msg: Message, state: FSMContext):
 
 # ---------------------
 # Получение текста
-@dp.message(NewsPost.text)
+@dp.message(StateFilter(NewsPost.text))
 async def process_text(msg: Message, state: FSMContext):
     await state.update_data(text=msg.text)
+    
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton("📸 Добавить фото", callback_data="add_photo")],
         [InlineKeyboardButton("🔗 Добавить кнопки", callback_data="add_buttons")],
@@ -121,7 +128,7 @@ async def add_photo_cb(cb: CallbackQuery, state: FSMContext):
     await cb.message.answer("Отправьте фото для поста.")
     await cb.answer()
 
-@dp.message(F.photo, NewsPost.photo)
+@dp.message(StateFilter(NewsPost.photo), F.photo)
 async def receive_photo(msg: Message, state: FSMContext):
     await state.update_data(photo=msg.photo[-1].file_id)
     kb = InlineKeyboardMarkup(inline_keyboard=[
@@ -131,7 +138,7 @@ async def receive_photo(msg: Message, state: FSMContext):
     await msg.answer("Фото сохранено! Выберите действие:", reply_markup=kb)
 
 # ---------------------
-# Добавление кнопок с ссылками
+# Добавление кнопок
 @dp.callback_query(F.data == "add_buttons")
 async def add_buttons_cb(cb: CallbackQuery, state: FSMContext):
     await cb.message.answer(
@@ -141,7 +148,7 @@ async def add_buttons_cb(cb: CallbackQuery, state: FSMContext):
     await state.set_state(NewsPost.buttons)
     await cb.answer()
 
-@dp.message(NewsPost.buttons)
+@dp.message(StateFilter(NewsPost.buttons))
 async def receive_buttons(msg: Message, state: FSMContext):
     buttons_data = []
     for line in msg.text.strip().split("\n"):
@@ -149,6 +156,7 @@ async def receive_buttons(msg: Message, state: FSMContext):
             name, url = line.split("|", 1)
             buttons_data.append((name.strip(), url.strip()))
     await state.update_data(buttons=buttons_data)
+    
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton("✅ Опубликовать сейчас", callback_data="publish_now")],
         [InlineKeyboardButton("⏰ Опубликовать позже", callback_data="publish_later")]
@@ -156,7 +164,7 @@ async def receive_buttons(msg: Message, state: FSMContext):
     await msg.answer("Кнопки добавлены. Выберите действие:", reply_markup=kb)
 
 # ---------------------
-# Публикация сейчас
+# Публикация сразу
 @dp.callback_query(F.data == "publish_now")
 async def publish_now_cb(cb: CallbackQuery, state: FSMContext):
     data = await state.get_data()
@@ -182,10 +190,9 @@ async def publish_now_cb(cb: CallbackQuery, state: FSMContext):
     await cb.answer()
 
 # ---------------------
-# Публикация позже — выбор времени
+# Отложенная публикация — выбор часа
 @dp.callback_query(F.data == "publish_later")
 async def publish_later_cb(cb: CallbackQuery, state: FSMContext):
-    # Кнопки часов 0-23
     kb = InlineKeyboardMarkup(row_width=6)
     for h in range(24):
         kb.add(InlineKeyboardButton(f"{h:02}", callback_data=f"hour_{h}"))
@@ -198,7 +205,7 @@ async def publish_later_cb(cb: CallbackQuery, state: FSMContext):
 async def choose_hour_cb(cb: CallbackQuery, state: FSMContext):
     hour = int(cb.data.split("_")[1])
     await state.update_data(schedule_hour=hour)
-    # Кнопки минут каждые 5 минут
+    
     kb = InlineKeyboardMarkup(row_width=6)
     for m in range(0, 60, 5):
         kb.add(InlineKeyboardButton(f"{m:02}", callback_data=f"minute_{m}"))
@@ -206,7 +213,7 @@ async def choose_hour_cb(cb: CallbackQuery, state: FSMContext):
     await cb.answer()
 
 # ---------------------
-# Выбор минут и планирование
+# Выбор минуты и планирование
 @dp.callback_query(F.data.startswith("minute_"))
 async def choose_minute_cb(cb: CallbackQuery, state: FSMContext):
     minute = int(cb.data.split("_")[1])
@@ -216,7 +223,6 @@ async def choose_minute_cb(cb: CallbackQuery, state: FSMContext):
     photo = data.get("photo")
     buttons_data = data.get("buttons", [])
 
-    # Рассчитываем задержку до выбранного времени
     now = datetime.now()
     post_time = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
     if post_time < now:
