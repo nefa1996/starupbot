@@ -5,7 +5,6 @@ from aiogram.filters import CommandStart, Command
 from aiogram.types import Message, CallbackQuery, LabeledPrice, PreCheckoutQuery, BotCommand
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
-from aiogram.types import InputFile
 
 from config import BOT_TOKEN, ADMIN_ID, LOG_CHANNELS
 from db import *
@@ -95,91 +94,6 @@ class NewsPost(StatesGroup):
     text = State()
     photo = State()
     scheduled_time = State()
-
-# ---------------------
-# Команда /news
-@dp.message(Command("news"))
-async def news_cmd(msg: Message, state: FSMContext):
-    if msg.from_user.id not in SUPER_ADMINS:
-        return await msg.answer("❌ У вас нет доступа к этой команде.")
-
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📝 Создать пост сейчас", callback_data="news_now")],
-        [InlineKeyboardButton(text="⏰ Создать пост на время", callback_data="news_schedule")]
-    ])
-    await msg.answer("Выберите действие:", reply_markup=kb)
-
-# ---------------------
-# Кнопки "сейчас" и "на время"
-@dp.callback_query(F.data.in_(["news_now", "news_schedule"]))
-async def news_cb(cb: CallbackQuery, state: FSMContext):
-    if cb.from_user.id not in SUPER_ADMINS:
-        return await cb.answer("❌ Нет доступа", show_alert=True)
-    
-    schedule = cb.data == "news_schedule"
-    await state.update_data(schedule=schedule)
-    await cb.message.answer("Отправьте текст поста (можно добавить фото после текста):")
-    await state.set_state(NewsPost.text)
-    await cb.answer()
-
-# ---------------------
-# Получение текста поста
-@dp.message(NewsPost.text)
-async def process_news_text(msg: Message, state: FSMContext):
-    if not msg.text:
-        return await msg.answer("❌ Текст не может быть пустым!")
-    
-    await state.update_data(text=msg.text)
-
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📸 Добавить фото", callback_data="add_photo")],
-        [InlineKeyboardButton(text="✅ Опубликовать", callback_data="publish_now")]
-    ])
-    await msg.answer("Текст сохранён. Вы можете добавить фото или опубликовать:", reply_markup=kb)
-    await state.set_state(NewsPost.photo)
-
-# ---------------------
-# Добавление фото
-@dp.callback_query(F.data == "add_photo")
-async def add_photo_cb(cb: CallbackQuery, state: FSMContext):
-    await cb.message.answer("Отправьте фото, которое хотите добавить к посту.")
-    await cb.answer()
-
-@dp.message(F.photo, NewsPost.photo)
-async def receive_photo(msg: Message, state: FSMContext):
-    file_id = msg.photo[-1].file_id  # берём самое большое качество
-    await state.update_data(photo=file_id)
-    await msg.answer("✅ Фото сохранено! Теперь можно опубликовать пост.")
-    
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="✅ Опубликовать", callback_data="publish_now")]
-    ])
-    await msg.answer("Нажмите кнопку, чтобы опубликовать пост:", reply_markup=kb)
-
-# ---------------------
-# Публикация поста (сразу)
-@dp.callback_query(F.data == "publish_now")
-async def publish_now_cb(cb: CallbackQuery, state: FSMContext):
-    data = await state.get_data()
-    text = data.get("text")
-    photo_id = data.get("photo")
-    is_scheduled = data.get("schedule", False)
-
-    if is_scheduled:
-        await cb.message.answer("❌ Для отложенной публикации используйте выбор времени!")
-        return await cb.answer()
-
-    try:
-        if photo_id:
-            await bot.send_photo(GROUP, photo=photo_id, caption=text)
-        else:
-            await bot.send_message(GROUP, text)
-        await cb.message.answer("✅ Пост успешно опубликован в группе!")
-    except Exception as e:
-        await cb.message.answer(f"❌ Ошибка при публикации: {e}")
-
-    await state.clear()
-    await cb.answer()
     
 @dp.message(Command("create_check"))
 async def create_check_cmd(msg: Message, state: FSMContext):
