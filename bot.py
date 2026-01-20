@@ -83,16 +83,136 @@ async def admin_all_commands(cb: CallbackQuery):
 
 
 # ---------------------
-# Настройки супер-админа и группы
-SUPER_ADMINS = [ADMIN_ID]  # сюда можно добавить ещё ID супер-админов
-GROUP = "@starupbotnews"   # или числовой ID -1001234567890
+# Настройки для новостей
+SUPER_ADMINS = [ADMIN_ID]  # сюда можно добавить еще ID супер-админов
+DRAFT_CHANNEL = -1001234567890  # ID канала черновиков (https://t.me/+j3H-16lGAolkMGZk)
+TARGET_CHANNEL = "@starupbotnews"  # целевая группа для публикации
 
 # ---------------------
-# FSM для поста с фото
+# FSM для новостей
 class NewsPost(StatesGroup):
     text = State()
     photo = State()
-    scheduled_time = State()
+    buttons = State()
+
+# ---------------------
+# Отслеживаем сообщения в канале черновиков
+@dp.message(F.chat.id == DRAFT_CHANNEL)
+async def draft_post(msg: Message, state: FSMContext):
+    if msg.from_user.id not in SUPER_ADMINS:
+        return  # только супер-админ может публиковать
+
+    await state.update_data(text=msg.text or "")
+    photo = msg.photo[-1].file_id if msg.photo else None
+    if photo:
+        await state.update_data(photo=photo)
+    
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Опубликовать сейчас", callback_data="publish_now")],
+        [InlineKeyboardButton(text="⏰ Опубликовать по времени", callback_data="publish_later")],
+        [InlineKeyboardButton(text="🔗 Добавить кнопки с ссылками", callback_data="add_buttons")]
+    ])
+    await msg.reply("Выберите действие для публикации:", reply_markup=kb)
+    await state.set_state(NewsPost.photo)
+
+# ---------------------
+# Добавление кнопок с ссылками
+@dp.callback_query(F.data == "add_buttons")
+async def add_buttons_cb(cb: CallbackQuery, state: FSMContext):
+    await cb.message.answer(
+        "Введите кнопки в формате:\nНазвание1|https://example.com\nНазвание2|https://example2.com\n"
+        "Каждая кнопка с новой строки."
+    )
+    await state.set_state(NewsPost.buttons)
+    await cb.answer()
+
+@dp.message(NewsPost.buttons)
+async def receive_buttons(msg: Message, state: FSMContext):
+    buttons_data = []
+    for line in msg.text.strip().split("\n"):
+        if "|" in line:
+            name, url = line.split("|", 1)
+            buttons_data.append((name.strip(), url.strip()))
+    await state.update_data(buttons=buttons_data)
+
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Опубликовать сейчас", callback_data="publish_now")],
+        [InlineKeyboardButton(text="⏰ Опубликовать по времени", callback_data="publish_later")]
+    ])
+    await msg.answer("Кнопки добавлены.", reply_markup=kb)
+
+# ---------------------
+# Опубликовать сейчас
+@dp.callback_query(F.data == "publish_now")
+async def publish_now_cb(cb: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    text = data.get("text")
+    photo = data.get("photo")
+    buttons_data = data.get("buttons", [])
+
+    kb = None
+    if buttons_data:
+        kb = InlineKeyboardMarkup(row_width=1)
+        for name, url in buttons_data:
+            kb.add(InlineKeyboardButton(text=name, url=url))
+
+    try:
+        if photo:
+            await bot.send_photo(TARGET_CHANNEL, photo=photo, caption=text, reply_markup=kb)
+        else:
+            await bot.send_message(TARGET_CHANNEL, text, reply_markup=kb)
+        await cb.message.answer("✅ Пост опубликован в @starupbotnews!")
+    except Exception as e:
+        await cb.message.answer(f"❌ Ошибка при публикации: {e}")
+    await state.clear()
+    await cb.answer()
+
+# ---------------------
+# Опубликовать по времени через инлайн-кнопки
+@dp.callback_query(F.data == "publish_later")
+async def publish_later_cb(cb: CallbackQuery, state: FSMContext):
+    kb = InlineKeyboardMarkup(row_width=3)
+    kb.add(
+        InlineKeyboardButton("через 1 мин", callback_data="schedule_1"),
+        InlineKeyboardButton("через 5 мин", callback_data="schedule_5"),
+        InlineKeyboardButton("через 10 мин", callback_data="schedule_10"),
+        InlineKeyboardButton("через 30 мин", callback_data="schedule_30"),
+        InlineKeyboardButton("через 1 час", callback_data="schedule_60")
+    )
+    await cb.message.answer("Выберите через сколько опубликовать пост:", reply_markup=kb)
+    await cb.answer()
+
+# ---------------------
+# Обработка отложенной публикации
+@dp.callback_query(F.data.startswith("schedule_"))
+async def schedule_post_cb(cb: CallbackQuery, state: FSMContext):
+    minutes = int(cb.data.split("_")[1])
+    data = await state.get_data()
+    text = data.get("text")
+    photo = data.get("photo")
+    buttons_data = data.get("buttons", [])
+
+    kb = None
+    if buttons_data:
+        kb = InlineKeyboardMarkup(row_width=1)
+        for name, url in buttons_data:
+            kb.add(InlineKeyboardButton(text=name, url=url))
+
+    await cb.message.answer(f"⏰ Пост будет опубликован через {minutes} минут.")
+
+    async def send_later():
+        await asyncio.sleep(minutes * 60)
+        try:
+            if photo:
+                await bot.send_photo(TARGET_CHANNEL, photo=photo, caption=text, reply_markup=kb)
+            else:
+                await bot.send_message(TARGET_CHANNEL, text, reply_markup=kb)
+        except Exception as e:
+            await cb.message.answer(f"❌ Ошибка при публикации: {e}")
+
+    asyncio.create_task(send_later())
+    await state.clear()
+    await cb.answer()
     
 @dp.message(Command("create_check"))
 async def create_check_cmd(msg: Message, state: FSMContext):
