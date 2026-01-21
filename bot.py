@@ -86,17 +86,22 @@ async def admin_all_commands(cb: CallbackQuery):
 # ======================
 class CreateCheck(StatesGroup):
     total_stars = State()
+
+
+class GiveawayCheck(StatesGroup):
+    total_stars = State()
     reward_per_user = State()
 
 
 # ======================
-# COMMAND: CREATE CHECK (OLD)
+# COMMAND: CREATE CHECK (OLD / PUBLISHED)
 # ======================
 @dp.message(Command("create_check"))
 async def create_check_cmd(msg: Message, state: FSMContext):
     if not is_admin(msg.from_user.id):
         return
 
+    await state.clear()
     await msg.answer("Введите общее количество звезд для чека:")
     await state.set_state(CreateCheck.total_stars)
 
@@ -133,12 +138,14 @@ async def process_create_check(msg: Message, state: FSMContext):
         [InlineKeyboardButton(text=f"👉 ЗАБРАТЬ {reward_per_user} ⭐", url=check_link)]
     ])
 
-    try:
-        await bot.send_message("@starupbotnews", news_text, reply_markup=kb, parse_mode="HTML")
-        await msg.answer(f"✅ Чек создан и отправлен в канал\nID: {check_id}")
-    except Exception as e:
-        await msg.answer(f"Чек создан, но не отправлен в канал\n{check_link}\n{e}")
+    await bot.send_message(
+        "@starupbotnews",
+        news_text,
+        reply_markup=kb,
+        parse_mode="HTML"
+    )
 
+    await msg.answer(f"✅ Чек создан и отправлен в канал\nID: {check_id}")
     await state.clear()
 
 
@@ -157,45 +164,42 @@ async def admin_checks_menu(cb: CallbackQuery):
         [InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_admin")]
     ])
 
-    await cb.message.edit_text(
-        "🎟 <b>Управление чеками</b>",
-        reply_markup=mk,
-        parse_mode="HTML"
-    )
+    await cb.message.edit_text("🎟 <b>Управление чеками</b>", reply_markup=mk, parse_mode="HTML")
     await cb.answer()
 
 
 # ======================
-# CREATE GIVEAWAY CHECK
+# CREATE GIVEAWAY CHECK (NO PUBLISH)
 # ======================
 @dp.callback_query(F.data == "admin_create_giveaway_btn")
 async def admin_create_giveaway_btn(cb: CallbackQuery, state: FSMContext):
     if not is_admin(cb.from_user.id):
         return
 
+    await state.clear()
     await cb.message.answer("Введите общее количество ⭐ для розыгрыша:")
-    await state.set_state(CreateCheck.total_stars)
+    await state.set_state(GiveawayCheck.total_stars)
     await cb.answer()
 
 
-@dp.message(CreateCheck.total_stars)
+@dp.message(GiveawayCheck.total_stars)
 async def process_giveaway_total(msg: Message, state: FSMContext):
     if not msg.text.replace('.', '', 1).isdigit():
         return await msg.answer("Введите число!")
 
     await state.update_data(total_stars=float(msg.text))
     await msg.answer("Введите количество ⭐ на 1 участника:")
-    await state.set_state(CreateCheck.reward_per_user)
+    await state.set_state(GiveawayCheck.reward_per_user)
 
 
-@dp.message(CreateCheck.reward_per_user)
+@dp.message(GiveawayCheck.reward_per_user)
 async def process_giveaway_reward(msg: Message, state: FSMContext):
     if not msg.text.replace('.', '', 1).isdigit():
         return await msg.answer("Введите число!")
 
-    reward_per_user = float(msg.text)
     data = await state.get_data()
     total_stars = data["total_stars"]
+    reward_per_user = float(msg.text)
 
     activations = int(total_stars / reward_per_user)
     if activations < 1:
@@ -209,14 +213,14 @@ async def process_giveaway_reward(msg: Message, state: FSMContext):
     conn.commit()
 
     bot_info = await bot.get_me()
-    check_link = f"https://t.me/{bot_info.username}?start=check_{check_id}"
+    link = f"https://t.me/{bot_info.username}?start=check_{check_id}"
 
     await msg.answer(
-        "✅ <b>Чек для розыгрыша создан</b>\n\n"
+        "🎲 <b>Чек для розыгрыша создан</b>\n\n"
         f"⭐ Всего: {total_stars}\n"
         f"👤 На 1: {reward_per_user}\n"
         f"🔢 Активаций: {activations}\n\n"
-        f"🔗 <b>Ссылка:</b>\n{check_link}",
+        f"🔗 <b>Ссылка:</b>\n{link}",
         parse_mode="HTML"
     )
 
@@ -231,6 +235,7 @@ async def admin_create_check_btn_handler(cb: CallbackQuery, state: FSMContext):
     if not is_admin(cb.from_user.id):
         return
 
+    await state.clear()
     await cb.message.answer("Введите общее количество звезд для чека:")
     await state.set_state(CreateCheck.total_stars)
     await cb.answer()
