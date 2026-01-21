@@ -863,14 +863,16 @@ async def admin_manage(cb: CallbackQuery, state: FSMContext):
 @dp.callback_query(F.data == "my_tasks")
 async def my_tasks_list(cb: CallbackQuery):
     try:
+        # На модерации
         cursor.execute("SELECT id, channel, subs_count FROM ad_orders WHERE user_id=?", (cb.from_user.id,))
         orders = cursor.fetchall()
-        
-        cursor.execute("SELECT id, channel, total_subs, left_subs FROM tasks WHERE channel IN (SELECT channel FROM ad_orders WHERE user_id=?)", (cb.from_user.id,))
+
+        # Активные задания
+        cursor.execute("SELECT id, channel, total_subs, left_subs FROM tasks WHERE user_id=?", (cb.from_user.id,))
         active_tasks = cursor.fetchall()
 
         text = "📋 <b>Мои задания:</b>\n\n"
-        
+
         if not orders and not active_tasks:
             text += "У вас пока нет созданных заданий."
         else:
@@ -879,16 +881,18 @@ async def my_tasks_list(cb: CallbackQuery):
                 for o in orders:
                     text += f"• {o[1]} ({o[2]} подп.)\n"
                 text += "\n"
-            
+
             if active_tasks:
                 text += "<b>Активные:</b>\n"
                 for t in active_tasks:
                     text += f"• {t[1]}: осталось {t[3]} из {t[2]}\n"
 
         await cb.message.answer(text, parse_mode="HTML")
+
     except Exception as e:
         print(f"Error in my_tasks_list: {e}")
         await cb.message.answer("❌ Произошла ошибка при загрузке заданий.")
+
     await cb.answer()
 
 @dp.callback_query(F.data == "ad_instruction")
