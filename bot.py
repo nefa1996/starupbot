@@ -132,12 +132,66 @@ async def admin_checks_menu(cb: CallbackQuery):
     
     mk = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🎁 Создать чек", callback_data="admin_create_check_btn")],
+        [InlineKeyboardButton(text="🎲 Создать чек для розыгрыша", callback_data="admin_create_giveaway_btn")],
         [InlineKeyboardButton(text="📊 Статистика чеков", callback_data="admin_checks_stats")],
         [InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_admin")]
     ])
     
     await cb.message.edit_text("🎟 <b>Управление чеками</b>", reply_markup=mk, parse_mode="HTML")
     await cb.answer()
+    
+    @dp.callback_query(F.data == "admin_create_giveaway_btn")
+async def admin_create_giveaway_btn(cb: CallbackQuery, state: FSMContext):
+    if not is_admin(cb.from_user.id): return
+    await cb.message.answer("Введите общее количество звезд для розыгрыша:")
+    await state.set_state(CreateCheck.total_stars)
+    await cb.answer()
+    
+    @dp.message(CreateCheck.total_stars)
+async def process_giveaway_total(msg: Message, state: FSMContext):
+    if not msg.text.replace('.', '', 1).isdigit():
+        return await msg.answer("Введите число!")
+
+    total_stars = float(msg.text)
+    await state.update_data(total_stars=total_stars)
+    await msg.answer("Введите количество звезд на 1 участника:")
+    await state.set_state(CreateCheck.reward_per_user)
+
+
+@dp.message(CreateCheck.reward_per_user)
+async def process_giveaway_reward(msg: Message, state: FSMContext):
+    if not msg.text.replace('.', '', 1).isdigit():
+        return await msg.answer("Введите число!")
+
+    reward_per_user = float(msg.text)
+    data = await state.get_data()
+    total_stars = data['total_stars']
+
+    activations = int(total_stars / reward_per_user)
+    if activations < 1:
+        return await msg.answer("Слишком маленькая сумма для раздачи!")
+
+    # Сохраняем в базу
+    cursor.execute(
+        "INSERT INTO checks (total_stars, activations_count, reward_per_user) VALUES (?, ?, ?)",
+        (total_stars, activations, reward_per_user)
+    )
+    check_id = cursor.lastrowid
+    conn.commit()
+
+    bot_info = await bot.get_me()
+    check_link = f"https://t.me/{bot_info.username}?start=check_{check_id}"
+
+    await msg.answer(
+        f"✅ Чек розыгрыша создан!\n\n"
+        f"ID чека: {check_id}\n"
+        f"Общее количество звезд: {total_stars}\n"
+        f"Звезд на 1 участника: {reward_per_user}\n"
+        f"Активаций: {activations}\n"
+        f"Ссылка для активации: {check_link}"
+    )
+
+    await state.clear()
 
 @dp.callback_query(F.data == "admin_create_check_btn")
 async def admin_create_check_btn_handler(cb: CallbackQuery, state: FSMContext):
