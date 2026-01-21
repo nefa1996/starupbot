@@ -44,10 +44,6 @@ async def notify_admin(text, kb=None):
         except Exception as e:
             print(f"Error sending to {chat_id}: {e}")
 
-# ---------------------
-async def main():
-    # Запускаем веб-сервер
-    await start_web()
 
     # Запускаем aiogram polling
     await dp.start_polling(bot)
@@ -178,16 +174,14 @@ async def process_giveaway_reward(msg: Message, state: FSMContext):
     total_stars = data["total_stars"]
     reward_per_user = float(msg.text)
 
-    # Сначала проверяем, чтобы reward_per_user не был 0
-if reward_per_user == 0:
-    return await msg.answer("❌ Невозможно рассчитать награду: деление на ноль!")
+    if reward_per_user == 0:
+        return await msg.answer("❌ Невозможно рассчитать награду: деление на ноль!")
 
-# Если всё ок, делим
-activations = int(total_stars / reward_per_user)
+    activations = int(total_stars / reward_per_user)
+    if activations < 1:
+        return await msg.answer("Слишком маленькая сумма!")
 
-# Проверяем минимальное значение
-if activations < 1:
-    return await msg.answer("Слишком маленькая сумма!")
+    # Сохраняем в базу
     cursor.execute(
         "INSERT INTO checks (total_stars, activations_count, reward_per_user) VALUES (?, ?, ?)",
         (total_stars, activations, reward_per_user)
@@ -199,7 +193,7 @@ if activations < 1:
     link = f"https://t.me/{bot_info.username}?start=check_{check_id}"
 
     await msg.answer(
-        "🎲 <b>Чек для розыгрыша создан</b>\n\n"
+        f"🎲 <b>Чек для розыгрыша создан</b>\n\n"
         f"⭐ Всего: {total_stars}\n"
         f"👤 На 1: {reward_per_user}\n"
         f"🔢 Активаций: {activations}\n\n"
@@ -208,8 +202,6 @@ if activations < 1:
     )
 
     await state.clear()
-
-
 # ======================
 # ADMIN CREATE CHECK BTN
 # ======================
@@ -261,8 +253,6 @@ async def back_to_admin_handler(cb: CallbackQuery):
     if not is_admin(cb.from_user.id): return
     await cb.message.edit_text("⚙️ Админ-панель", reply_markup=admin_kb(cb.from_user.id == ADMIN_ID))
     await cb.answer()
-
-@dp.message(Command("create_check"))
 
 @dp.message(F.text == "/id")
 async def get_chat_id(msg: Message):
@@ -858,29 +848,28 @@ async def admin_manage(cb: CallbackQuery, state: FSMContext):
 
 @dp.callback_query(F.data == "my_tasks")
 async def my_tasks_list(cb: CallbackQuery):
-    cursor.execute("""
-        SELECT channel, total_subs, left_subs 
-        FROM tasks 
-        WHERE owner_id=?
-        ORDER BY id DESC
-    """, (cb.from_user.id,))
+    try:
+        cursor.execute("""
+            SELECT channel, total_subs, left_subs 
+            FROM tasks 
+            WHERE owner_id=?
+            ORDER BY id DESC
+        """, (cb.from_user.id,))
 
-    rows = cursor.fetchall()
+        rows = cursor.fetchall()
+        if not rows:
+            return await cb.message.answer("📭 У вас пока нет активных заданий.")
 
-    if not rows:
-        return await cb.message.answer("📭 У вас пока нет активных заданий.")
+        text = "📋 <b>Мои задания</b>\n\n"
+        for ch, total, left in rows:
+            text += f"🔗 {ch}\n👥 Осталось: {left}/{total}\n\n"
 
-    text = "📋 <b>Мои задания</b>\n\n"
-    for ch, total, left in rows:
-        text += f"🔗 {ch}\n👥 Осталось: {left}/{total}\n\n"
-
-    await cb.message.answer(text, parse_mode="HTML")
-    await cb.answer()
-
+        await cb.message.answer(text, parse_mode="HTML")
+        await cb.answer()
     except Exception as e:
         print(f"Error in my_tasks_list: {e}")
         await cb.message.answer("❌ Произошла ошибка при загрузке заданий.")
-    await cb.answer()
+        await cb.answer()
     
 @dp.callback_query(F.data == "ad_instruction")
 async def ad_instruction_handler(cb: CallbackQuery):
@@ -969,11 +958,13 @@ async def on_startup(bot: Bot):
 async def handle(request):
     return web.Response(text="OK")
 
-# -----------------------------
-# Правильный main для Koyeb
 async def main():
-    # Запускаем веб-сервер в отдельном таске
+    # Запускаем веб-сервер в фоне
     asyncio.create_task(start_web())
+    await asyncio.sleep(2)  # чтобы Telegram API не упало
+
+    print("Starting polling...")
+    await dp.start_polling(bot)
 
     # Небольшая задержка — иначе Telegram API даёт timeout
     await asyncio.sleep(2)
