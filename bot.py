@@ -467,8 +467,7 @@ async def tasks_list(msg: Message):
 
 @dp.message(F.text == "⭐ Заработать Звёзды")
 async def earn_stars(msg: Message):
-    # This button should also show tasks according to StarsovGamesBot logic (earn stars = tasks)
-    await tasks_list(msg)
+    await start(msg)
 
 @dp.message(F.text == "🎁 Вывести Звёзды")
 async def withdraw_gifts(msg: Message):
@@ -802,16 +801,29 @@ async def check_sub(cb: CallbackQuery):
 
 @dp.callback_query(F.data.startswith("adapp_"))
 async def ad_approve(cb: CallbackQuery):
-    if not is_admin(cb.from_user.id): return
+    if not is_admin(cb.from_user.id):
+        return
+
     aid = int(cb.data.split("_")[1])
-    cursor.execute("SELECT * FROM ad_orders WHERE id=?", (aid,))
+
+    cursor.execute("SELECT id, user_id, channel, subs_count FROM ad_orders WHERE id=?", (aid,))
     order = cursor.fetchone()
-    if order:
-        # Устанавливаем награду 0.50 при создании задания из заявки
-        cursor.execute("INSERT INTO tasks (channel, reward, total_subs, left_subs, active) VALUES (?, 0.50, ?, ?, 1)", (order[2], order[3], order[3]))
-        cursor.execute("DELETE FROM ad_orders WHERE id=?", (aid,))
-        conn.commit()
-        await cb.message.edit_text(f"✅ Реклама {order[2]} одобрена и запущена!")
+
+    if not order:
+        return await cb.answer("Заявка не найдена")
+
+    _, owner_id, channel, subs = order
+
+    # Создаём задание с владельцем
+    cursor.execute("""
+        INSERT INTO tasks (owner_id, channel, reward, total_subs, left_subs, active)
+        VALUES (?, ?, 0.50, ?, ?, 1)
+    """, (owner_id, channel, subs, subs))
+
+    cursor.execute("DELETE FROM ad_orders WHERE id=?", (aid,))
+    conn.commit()
+
+    await cb.message.edit_text(f"✅ Задание для {channel} запущено!")
     await cb.answer()
 
 @dp.callback_query(F.data.startswith("adrej_"))
@@ -861,33 +873,27 @@ async def admin_manage(cb: CallbackQuery, state: FSMContext):
     await cb.message.edit_text(text, reply_markup=mk, parse_mode="HTML")
     await cb.answer()
 
-
 @dp.callback_query(F.data == "my_tasks")
 async def my_tasks_list(cb: CallbackQuery):
-    try:
-        cursor.execute("SELECT id, channel, subs_count FROM ad_orders WHERE user_id=?", (cb.from_user.id,))
-        orders = cursor.fetchall()
-        
-        cursor.execute("SELECT id, channel, total_subs, left_subs FROM tasks WHERE channel IN (SELECT channel FROM ad_orders WHERE user_id=?)", (cb.from_user.id,))
-        active_tasks = cursor.fetchall()
+    cursor.execute("""
+        SELECT channel, total_subs, left_subs 
+        FROM tasks 
+        WHERE owner_id=?
+        ORDER BY id DESC
+    """, (cb.from_user.id,))
 
-        text = "📋 <b>Мои задания:</b>\n\n"
-        
-        if not orders and not active_tasks:
-            text += "У вас пока нет созданных заданий."
-        else:
-            if orders:
-                text += "<b>На модерации:</b>\n"
-                for o in orders:
-                    text += f"• {o[1]} ({o[2]} подп.)\n"
-                text += "\n"
-            
-            if active_tasks:
-                text += "<b>Активные:</b>\n"
-                for t in active_tasks:
-                    text += f"• {t[1]}: осталось {t[3]} из {t[2]}\n"
+    rows = cursor.fetchall()
 
-        await cb.message.answer(text, parse_mode="HTML")
+    if not rows:
+        return await cb.message.answer("📭 У вас пока нет активных заданий.")
+
+    text = "📋 <b>Мои задания</b>\n\n"
+    for ch, total, left in rows:
+        text += f"🔗 {ch}\n👥 Осталось: {left}/{total}\n\n"
+
+    await cb.message.answer(text, parse_mode="HTML")
+    await cb.answer()
+
     except Exception as e:
         print(f"Error in my_tasks_list: {e}")
         await cb.message.answer("❌ Произошла ошибка при загрузке заданий.")
@@ -981,17 +987,6 @@ async def on_startup(bot: Bot):
 # Веб-сервер для Koyeb health-check
 async def handle(request):
     return web.Response(text="OK")
-
-async def start_web():
-    app = web.Application()
-    app.router.add_get("/", handle)
-    runner = web.AppRunner(app)
-    await runner.setup()
-
-    site = web.TCPSite(runner, "0.0.0.0", 8000)
-    await site.start()
-    print("Health-check server started on port 8000")
-
 
 # -----------------------------
 # Правильный main для Koyeb
