@@ -140,9 +140,10 @@ async def admin_checks_menu(cb: CallbackQuery):
     await cb.message.edit_text("🎟 <b>Управление чеками</b>", reply_markup=mk, parse_mode="HTML")
     await cb.answer()
     
-    @dp.callback_query(F.data == "admin_create_giveaway_btn")
-async def admin_create_giveaway_btn(cb: CallbackQuery, state: FSMContext):
-    if not is_admin(cb.from_user.id): return
+   @dp.callback_query(F.data == "admin_create_giveaway_btn")
+    async def admin_create_giveaway_btn(cb: CallbackQuery, state: FSMContext):
+    if not is_admin(cb.from_user.id):
+        return
     await cb.message.answer("Введите общее количество звезд для розыгрыша:")
     await state.set_state(CreateCheck.total_stars)
     await cb.answer()
