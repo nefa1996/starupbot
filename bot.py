@@ -530,55 +530,58 @@ async def deposit_usual(cb: CallbackQuery, state: FSMContext):
     await state.clear()
     await cb.answer()
 
+
+@dp.callback_query(F.data.startswith("dep_stars_"))
+async def deposit_stars_invoice(cb: CallbackQuery, state: FSMContext):
+    amount = int(cb.data.split("_")[2])
+    await cb.message.answer_invoice(
+        title="Пополнение рекламного баланса",
+        description=f"Пополнение на {amount} звезд",
+        prices=[LabeledPrice(label="XTR", amount=amount)],
+        provider_token="", payload=f"dep_ads_{amount}", currency="XTR"
+    )
+    await state.clear()
+    await cb.answer()
+
+@dp.callback_query(F.data == "create_task")
+async def create_task_start(cb: CallbackQuery, state: FSMContext):
+    await cb.message.answer("Введите ссылку на канал (с @):")
+    await state.set_state(OrderAd.channel)
+    await cb.answer()
+
+@dp.message(OrderAd.channel)
+async def ad_channel(msg: Message, state: FSMContext):
+    channel = msg.text
+    if not (channel.startswith("@") or channel.startswith("https://t.me/")):
+        return await msg.answer("❌ Введите корректную ссылку!")
+    try:
+        chat = await bot.get_chat(channel)
+        member = await bot.get_chat_member(chat.id, (await bot.get_me()).id)
+        if member.status not in ["administrator", "creator"]:
+            return await msg.answer("❌ Бот должен быть администратором в канале!")
+    except: return await msg.answer("❌ Бот не может найти канал!")
+    await state.update_data(channel=channel)
+    await msg.answer("Введите количество подписчиков (1 подписка = 1 звезда):")
+    await state.set_state(OrderAd.count)
+
 @dp.message(OrderAd.count)
 async def ad_finish(msg: Message, state: FSMContext):
-    if not msg.text.isdigit(): 
-        return await msg.answer("Введите число!")
-
+    if not msg.text.isdigit(): return await msg.answer("Введите число!")
     count = int(msg.text)
-
     cursor.execute("SELECT balance_ads FROM users WHERE user_id=?", (msg.from_user.id,))
-    user_balance = cursor.fetchone()
-    if not user_balance or user_balance[0] < count:
-        return await msg.answer("❌ Недостаточно рекламного баланса!")
-
+    if cursor.fetchone()[0] < count: return await msg.answer("❌ Недостаточно рекламного баланса!")
     data = await state.get_data()
-
-    # Списываем баланс
-    cursor.execute(
-        "UPDATE users SET balance_ads = balance_ads - ? WHERE user_id = ?",
-        (count, msg.from_user.id)
-    )
-
-    # Создаём заказ
-    cursor.execute(
-        "INSERT INTO ad_orders (user_id, channel, subs_count) VALUES (?,?,?)",
-        (msg.from_user.id, data['channel'], count)
-    )
-    
-    # Создаём активное задание
-    cursor.execute(
-        "INSERT INTO tasks (user_id, channel, total_subs, left_subs) VALUES (?,?,?,?)",
-        (msg.from_user.id, data['channel'], count, count)
-    )
-
+    cursor.execute("UPDATE users SET balance_ads = balance_ads - ? WHERE user_id = ?", (count, msg.from_user.id))
+    cursor.execute("INSERT INTO ad_orders (user_id, channel, subs_count) VALUES (?,?,?)", (msg.from_user.id, data['channel'], count))
     conn.commit()
-    await state.clear()
-
-    # Инфо для админа
+    
     user_info = f"👤 {msg.from_user.id}"
-    if msg.from_user.username:
-        user_info += f" (@{msg.from_user.username})"
-
+    if msg.from_user.username: user_info += f" (@{msg.from_user.username})"
+    
     admin_kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="💬 Написать клиенту", url=f"tg://user?id={msg.from_user.id}")],
         [InlineKeyboardButton(text="⚙️ Админ-панель", url=f"https://t.me/{(await bot.get_me()).username}?start=admin")]
     ])
-
-    await msg.answer(
-        f"✅ Задание создано!\nКанал: {data['channel']}\nПодписки: {count}\n{user_info}",
-        reply_markup=admin_kb
-    )
     
     # Отправляем уведомление ТОЛЬКО в канал логов
     try:
