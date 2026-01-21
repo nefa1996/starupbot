@@ -178,10 +178,16 @@ async def process_giveaway_reward(msg: Message, state: FSMContext):
     total_stars = data["total_stars"]
     reward_per_user = float(msg.text)
 
-    activations = int(total_stars / reward_per_user)
-    if activations < 1:
-        return await msg.answer("Слишком маленькая сумма!")
+    # Сначала проверяем, чтобы reward_per_user не был 0
+if reward_per_user == 0:
+    return await msg.answer("❌ Невозможно рассчитать награду: деление на ноль!")
 
+# Если всё ок, делим
+activations = int(total_stars / reward_per_user)
+
+# Проверяем минимальное значение
+if activations < 1:
+    return await msg.answer("Слишком маленькая сумма!")
     cursor.execute(
         "INSERT INTO checks (total_stars, activations_count, reward_per_user) VALUES (?, ?, ?)",
         (total_stars, activations, reward_per_user)
