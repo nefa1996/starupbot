@@ -858,43 +858,27 @@ async def admin_manage(cb: CallbackQuery, state: FSMContext):
     await cb.message.edit_text(text, reply_markup=mk, parse_mode="HTML")
     await cb.answer()
 
+
 @dp.callback_query(F.data == "my_tasks")
 async def my_tasks_list(cb: CallbackQuery):
     try:
-        # Проверяем наличие таблиц
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='ad_orders'")
-        if not cursor.fetchone():
-            return await cb.message.answer("❌ Таблица ad_orders не найдена!")
-
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='tasks'")
-        if not cursor.fetchone():
-            return await cb.message.answer("❌ Таблица tasks не найдена!")
-
-        # Заказы на модерации
-        cursor.execute(
-            "SELECT id, channel, subs_count FROM ad_orders WHERE user_id=?",
-            (cb.from_user.id,)
-        )
+        cursor.execute("SELECT id, channel, subs_count FROM ad_orders WHERE user_id=?", (cb.from_user.id,))
         orders = cursor.fetchall()
-
-        # Активные задания
-        cursor.execute(
-            "SELECT id, channel, total_subs, left_subs FROM tasks WHERE user_id=?",
-            (cb.from_user.id,)
-        )
+        
+        cursor.execute("SELECT id, channel, total_subs, left_subs FROM tasks WHERE channel IN (SELECT channel FROM ad_orders WHERE user_id=?)", (cb.from_user.id,))
         active_tasks = cursor.fetchall()
 
         text = "📋 <b>Мои задания:</b>\n\n"
-
+        
         if not orders and not active_tasks:
             text += "У вас пока нет созданных заданий."
         else:
             if orders:
                 text += "<b>На модерации:</b>\n"
                 for o in orders:
-                    text += f"• {o[1]} ({o[2]} подписчиков)\n"
+                    text += f"• {o[1]} ({o[2]} подп.)\n"
                 text += "\n"
-
+            
             if active_tasks:
                 text += "<b>Активные:</b>\n"
                 for t in active_tasks:
