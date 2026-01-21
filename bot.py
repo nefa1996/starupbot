@@ -960,7 +960,6 @@ async def handle(request):
 
 async def main():
     # Запускаем веб-сервер в фоне
-    asyncio.create_task(start_web())
     await asyncio.sleep(2)  # чтобы Telegram API не упало
 
     print("Starting polling...")
@@ -968,9 +967,6 @@ async def main():
 
     # Небольшая задержка — иначе Telegram API даёт timeout
     await asyncio.sleep(2)
-
-    print("Starting polling...")
-    await dp.start_polling(bot)
 
 
 if __name__ == "__main__":
