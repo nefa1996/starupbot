@@ -339,40 +339,20 @@ async def start(msg: Message):
     await msg.answer("⭐")
     
     # 2. Информация о рефералах
-user_id = msg.from_user.id
-
-cursor.execute(
-    "SELECT COUNT(*) FROM users WHERE ref_id = ?",
-    (user_id,)
-)
-count = cursor.fetchone()[0]
-
-bot_info = await bot.get_me()
-
-ref_link = f"https://t.me/{bot_info.username}?start=ref_{user_id}"
-
-ref_text = (
-    f"Получайте +2 ⭐ за каждого приглашенного друга!\n\n"
-    f"🔗 Ваша реферальная ссылка:\n"
-    f"{ref_link}\n\n"
-    f"🎉 Приглашайте по этой ссылке своих друзей, отправляйте её во все чаты и зарабатывайте Звёзды!\n\n"
-    f"👥 Приглашено вами: {count}"
-)
-
-kb = InlineKeyboardMarkup(inline_keyboard=[
-    [
-        InlineKeyboardButton(
-            text="🚀 Отправить ссылку друзьям",
-            url=ref_link
-        )
-    ]
-])
-
-await msg.answer(
-    ref_text,
-    reply_markup=kb,
-    disable_web_page_preview=True
-)
+    user_id = msg.from_user.id
+    cursor.execute("SELECT COUNT(*) FROM users WHERE ref_id=?", (user_id,))
+    count = cursor.fetchone()[0]
+    bot_info = await bot.get_me()
+    ref_text = (
+        f"Получайте +2 ⭐ за каждого приглашенного друга!\n\n"
+        f"🔗 Ваша реферальная ссылка:\nhttps://t.me/{bot_info.username}?start={user_id}\n\n"
+        f"🎉 Приглашайте по этой ссылке своих друзей, отправляйте её во все чаты и зарабатывайте Звёзды!\n\n"
+        f"Приглашено вами: {count}"
+    )
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🚀 Отправить Ссылку Друзьям", switch_inline_query=f"start={user_id}")]
+    ])
+    await msg.answer(ref_text, reply_markup=kb, disable_web_page_preview=True)
     
     # Пауза
     await asyncio.sleep(2)
