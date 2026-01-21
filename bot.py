@@ -45,21 +45,6 @@ async def notify_admin(text, kb=None):
             print(f"Error sending to {chat_id}: {e}")
 
 # ---------------------
-# Фейковый веб-сервер для Koyeb
-async def handle(request):
-    return web.Response(text="OK")
-
-async def start_web():
-    app = web.Application()
-    app.router.add_get("/", handle)
-    runner = web.AppRunner(app)
-    await runner.setup()
-    site = web.TCPSite(runner, "0.0.0.0", 8000)
-    await site.start()
-    print("Fake web server started on port 8000")
-
-
-# ---------------------
 async def main():
     # Запускаем веб-сервер
     await start_web()
@@ -81,17 +66,9 @@ async def admin_all_commands(cb: CallbackQuery):
     await cb.message.answer(text, parse_mode="HTML")
     await cb.answer()
 
-    # ======================
-# STATES
-# ======================
-class CreateCheck(StatesGroup):
-    total_stars = State()
-
-
 class GiveawayCheck(StatesGroup):
     total_stars = State()
     reward_per_user = State()
-
 
 # ======================
 # COMMAND: CREATE CHECK (OLD / PUBLISHED)
@@ -971,8 +948,6 @@ async def process_add_admin(msg: Message, state: FSMContext):
     conn.commit()
     await msg.answer(f"✅ Пользователь {target_id} теперь администратор!")
     await state.clear()
-
-from aiohttp import web
 
 @dp.startup()
 async def on_startup(bot: Bot):
