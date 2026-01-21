@@ -861,10 +861,27 @@ async def admin_manage(cb: CallbackQuery, state: FSMContext):
 @dp.callback_query(F.data == "my_tasks")
 async def my_tasks_list(cb: CallbackQuery):
     try:
-        cursor.execute("SELECT id, channel, subs_count FROM ad_orders WHERE user_id=?", (cb.from_user.id,))
+        # Проверяем наличие таблиц
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='ad_orders'")
+        if not cursor.fetchone():
+            return await cb.message.answer("❌ Таблица ad_orders не найдена!")
+
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='tasks'")
+        if not cursor.fetchone():
+            return await cb.message.answer("❌ Таблица tasks не найдена!")
+
+        # Заказы на модерации
+        cursor.execute(
+            "SELECT id, channel, subs_count FROM ad_orders WHERE user_id=?",
+            (cb.from_user.id,)
+        )
         orders = cursor.fetchall()
 
-        cursor.execute("SELECT id, channel, total_subs, left_subs FROM tasks WHERE user_id=?", (cb.from_user.id,))
+        # Активные задания
+        cursor.execute(
+            "SELECT id, channel, total_subs, left_subs FROM tasks WHERE user_id=?",
+            (cb.from_user.id,)
+        )
         active_tasks = cursor.fetchall()
 
         text = "📋 <b>Мои задания:</b>\n\n"
@@ -875,7 +892,7 @@ async def my_tasks_list(cb: CallbackQuery):
             if orders:
                 text += "<b>На модерации:</b>\n"
                 for o in orders:
-                    text += f"• {o[1]} ({o[2]} подп.)\n"
+                    text += f"• {o[1]} ({o[2]} подписчиков)\n"
                 text += "\n"
 
             if active_tasks:
@@ -884,16 +901,11 @@ async def my_tasks_list(cb: CallbackQuery):
                     text += f"• {t[1]}: осталось {t[3]} из {t[2]}\n"
 
         await cb.message.answer(text, parse_mode="HTML")
-
     except Exception as e:
         print(f"Error in my_tasks_list: {e}")
         await cb.message.answer("❌ Произошла ошибка при загрузке заданий.")
-
-    try:
-        await cb.answer()
-    except TelegramBadRequest:
-        pass  # Игнорируем устаревший callback
-
+    await cb.answer()
+    
 @dp.callback_query(F.data == "ad_instruction")
 async def ad_instruction_handler(cb: CallbackQuery):
     text = (
