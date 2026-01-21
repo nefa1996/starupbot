@@ -863,11 +863,9 @@ async def admin_manage(cb: CallbackQuery, state: FSMContext):
 @dp.callback_query(F.data == "my_tasks")
 async def my_tasks_list(cb: CallbackQuery):
     try:
-        # На модерации
         cursor.execute("SELECT id, channel, subs_count FROM ad_orders WHERE user_id=?", (cb.from_user.id,))
         orders = cursor.fetchall()
 
-        # Активные задания
         cursor.execute("SELECT id, channel, total_subs, left_subs FROM tasks WHERE user_id=?", (cb.from_user.id,))
         active_tasks = cursor.fetchall()
 
@@ -893,7 +891,10 @@ async def my_tasks_list(cb: CallbackQuery):
         print(f"Error in my_tasks_list: {e}")
         await cb.message.answer("❌ Произошла ошибка при загрузке заданий.")
 
-    await cb.answer()
+    try:
+        await cb.answer()
+    except TelegramBadRequest:
+        pass  # Игнорируем устаревший callback
 
 @dp.callback_query(F.data == "ad_instruction")
 async def ad_instruction_handler(cb: CallbackQuery):
